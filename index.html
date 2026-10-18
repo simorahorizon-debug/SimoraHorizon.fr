@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="fr" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <title>Simora Horizon | Convoyage & Courtage Automobile</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        // Bleu nuit (fond) : une nuit sur la route, plus profond qu'un noir uni
+                        ebony: {
+                            900: '#0C1220',
+                            800: '#111A2B',
+                            700: '#18233A',
+                            600: '#22304A',
+                        },
+                        bronze: {
+                            500: '#9A7650',
+                            600: '#7A5B3A',
+                        },
+                        // Or champagne : la couleur de la marque, un peu plus lumineux
+                        champagne: {
+                            300: '#F4E3B8',
+                            400: '#E3C27E',
+                            500: '#CFA65E',
+                            600: '#A9843F'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Carte : Leaflet (OpenStreetMap) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0C1220;
+            color: #EEE9DF;
+        }
+        .glow-champagne {
+            box-shadow: 0 0 60px -12px rgba(227, 194, 126, 0.22);
+        }
+        .glass-luxury {
+            background: rgba(17, 26, 43, 0.82);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(227, 194, 126, 0.16);
+        }
+        .glass-luxury-hover:hover {
+            border-color: rgba(227, 194, 126, 0.45);
+            background: rgba(24, 35, 58, 0.92);
+        }
+
+        /* Liste de suggestions d'adresses */
+        .suggest-list {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 100%;
+            margin-top: 6px;
+            z-index: 40;
+            background: #111A2B;
+            border: 1px solid rgba(227, 194, 126, 0.35);
+            border-radius: 12px;
+            max-height: 320px;
+            overflow-y: auto;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.55);
+            padding: 4px;
+        }
+        .suggest-item {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #EEE9DF;
+        }
+        .suggest-item i {
+            color: #E3C27E;
+            margin-top: 3px;
+            width: 14px;
+            text-align: center;
+            font-size: 12px;
+        }
+        .suggest-item:hover,
+        .suggest-item.active {
+            background: rgba(227, 194, 126, 0.14);
+        }
+        .suggest-main { display: block; }
+        .suggest-sub { display: block; font-size: 11px; color: #9CA3AF; margin-top: 2px; }
+        .suggest-empty { padding: 10px 12px; font-size: 12px; color: #9CA3AF; }
+        .is-valid { border-color: rgba(16, 185, 129, 0.7) !important; }
+
+        /* Fiches A / B du simulateur */
+        .point {
+            border: 1px solid rgba(227, 194, 126, 0.18);
+            background: rgba(12, 18, 32, 0.55);
+            border-radius: 16px;
+            padding: 16px;
+            min-width: 0;
+        }
+        @media (min-width: 640px) { .point { padding: 20px; } }
+        .pastille {
+            width: 28px; height: 28px; border-radius: 999px;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 13px; font-weight: 800;
+        }
+        .pastille-a, .repere-a { background: #E3C27E; color: #0C1220; }
+        .pastille-b, .repere-b { background: #EEE9DF; color: #0C1220; }
+
+        /* Carte du trajet */
+        .carte {
+            position: relative; z-index: 0;
+            height: 240px; border-radius: 16px; overflow: hidden;
+            border: 1px solid rgba(227, 194, 126, 0.2);
+            background: #111A2B;
+        }
+        @media (min-width: 640px) { .carte { height: 320px; } }
+        /* Fond de carte assombri pour rester dans les couleurs du site */
+        .carte .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.55); }
+        .carte .leaflet-control-attribution { background: rgba(12, 18, 32, 0.8); color: #A9B1BF; }
+        .carte .leaflet-control-attribution a { color: #E3C27E; }
+        .carte .leaflet-bar a { background: #111A2B; color: #EEE9DF; border-color: rgba(227, 194, 126, 0.25); }
+        .carte .leaflet-bar a:hover { background: #18233A; }
+        .repere {
+            width: 32px; height: 32px; border-radius: 999px;
+            display: flex; align-items: center; justify-content: center;
+            font: 800 14px/1 Inter, sans-serif;
+            border: 2px solid #0C1220; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+        }
+        .leaflet-marker-draggable .repere { cursor: grab; }
+
+        /* Ciel de crépuscule sur l'horizon (accueil) */
+        .ciel-horizon {
+            background:
+                radial-gradient(90% 45% at 60% 92%, rgba(227, 160, 90, 0.32), rgba(227, 160, 90, 0) 70%),
+                radial-gradient(60% 30% at 60% 92%, rgba(244, 227, 184, 0.2), rgba(244, 227, 184, 0) 70%),
+                linear-gradient(180deg, #0A0F1B 0%, #0E1626 45%, #16203A 80%, #1E2640 100%);
+        }
+        /* Horizon en collines (même courbe que la carte de visite), étiré sur toute la largeur de l'écran */
+        .horizon-courbe {
+            position: absolute; left: 0; right: 0; bottom: 0;
+            height: 170px; pointer-events: none;
+        }
+        @media (max-width: 639px) { .horizon-courbe { display: none; } }
+        .horizon-courbe svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+        /* halo doré autour du trait (appliqué après le dessin : il ne se déforme pas) */
+        .horizon-trait {
+            filter: drop-shadow(0 0 5px rgba(227, 194, 126, 0.55));
+            -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+                    mask-image: linear-gradient(90deg, transparent 0%, #000 8%, #000 92%, transparent 100%);
+        }
+        /* emblème de l'horizon, mobile */
+        .horizon-embleme {
+            width: 78%; max-width: 300px; height: 34px; overflow: visible;
+            filter: drop-shadow(0 0 4px rgba(227, 194, 126, 0.6));
+        }
+        :focus-visible { outline: 2px solid #E3C27E; outline-offset: 2px; }
+    </style>
+</head>
+<body class="bg-ebony-900 text-gray-100 antialiased selection:bg-champagne-500 selection:text-ebony-900">
+
+    <!-- Navigation Header -->
+    <header class="fixed top-0 left-0 right-0 z-50 glass-luxury border-b border-champagne-500/10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-24 flex items-center justify-between gap-6">
+            <!-- Logo -->
+            <a href="#accueil" class="flex items-center space-x-3.5 group shrink-0 whitespace-nowrap">
+                <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-bronze-600 to-champagne-500 flex items-center justify-center text-ebony-900 font-black text-xl shadow-xl shadow-champagne-500/10 group-hover:scale-105 transition-transform">
+                    <i class="fa-solid fa-crown text-ebony-900 text-lg"></i>
+                </div>
+                <div>
+                    <span class="text-xl font-extrabold tracking-wider text-white">SIMORA <span class="text-champagne-400 font-light">HORIZON</span></span>
+                    <span class="block text-[9px] text-champagne-500/80 tracking-[0.2em] uppercase">Convoyage & Courtage Auto</span>
+                </div>
+            </a>
+
+            <!-- Desktop Nav Links -->
+            <nav class="hidden lg:flex items-center space-x-6 xl:space-x-8 text-sm font-medium text-gray-300 whitespace-nowrap">
+                <a href="#accueil" class="hover:text-champagne-400 transition-colors">Accueil</a>
+                <a href="#services" class="hover:text-champagne-400 transition-colors">Prestations</a>
+                <a href="#simulateur" class="hover:text-champagne-400 transition-colors">Simulateur Devis</a>
+                <a href="#garanties" class="hover:text-champagne-400 transition-colors">Garanties & Sécurité</a>
+                <a href="#apropos" class="hover:text-champagne-400 transition-colors">À Propos</a>
+                <a href="#contact" class="hover:text-champagne-400 transition-colors">Contact</a>
+            </nav>
+
+            <!-- CTA Button -->
+            <div class="hidden lg:flex items-center space-x-5 whitespace-nowrap">
+                <a href="tel:0612133886" class="text-xs font-semibold text-gray-300 hover:text-white flex items-center gap-2 border-r border-champagne-500/20 pr-5">
+                    <i class="fa-solid fa-phone text-champagne-400"></i> 06 12 13 38 86
+                </a>
+                <a href="#simulateur" class="bg-gradient-to-r from-champagne-600 to-champagne-400 text-ebony-900 font-bold px-6 py-3 rounded-xl shadow-lg shadow-champagne-500/20 hover:shadow-champagne-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all text-xs tracking-wider uppercase">
+                    Devis Instantané
+                </a>
+            </div>
+
+            <!-- Mobile Menu Toggle -->
+            <button id="mobile-menu-btn" class="lg:hidden text-champagne-400 text-2xl p-2 focus:outline-none">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </div>
+
+        <!-- Mobile Navigation Menu -->
+        <div id="mobile-menu" class="hidden lg:hidden glass-luxury border-b border-champagne-500/10 px-6 py-5 space-y-4">
+            <a href="#accueil" class="block text-gray-300 hover:text-champagne-400 text-sm font-medium py-1">Accueil</a>
+            <a href="#services" class="block text-gray-300 hover:text-champagne-400 text-sm font-medium py-1">Prestations</a>
+            <a href="#simulateur" class="block text-gray-300 hover:text-champagne-400 text-sm font-medium py-1">Simulateur Devis</a>
+            <a href="#garanties" class="block text-gray-300 hover:text-champagne-400 text-sm font-medium py-1">Garanties & Sécurité</a>
+            <a href="#apropos" class="block text-gray-300 hover:text-champagne-400 text-sm font-medium py-1">À Propos</a>
+            <a href="#contact" class="block text-gray-300 hover:text-champagne-400 text-sm font-medium py-1">Contact</a>
+            <div class="pt-4 border-t border-champagne-500/15 flex flex-col gap-3">
+                <a href="tel:0612133886" class="flex items-center gap-2 text-xs text-gray-300">
+                    <i class="fa-solid fa-phone text-champagne-400"></i> 06 12 13 38 86
+                </a>
+                <a href="#simulateur" class="w-full text-center bg-gradient-to-r from-champagne-600 to-champagne-400 text-ebony-900 font-bold py-3 rounded-xl text-xs tracking-wider uppercase">
+                    Devis Instantané
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section id="accueil" class="relative isolate bg-ebony-900 min-h-screen flex items-center justify-center pt-32 pb-28 sm:pb-40 overflow-hidden">
+        <!-- Background Gradient glow & Pattern -->
+        <div class="absolute inset-0 ciel-horizon -z-10"></div>
+        <!-- Mobile : fondu doux vers la section suivante -->
+        <div class="sm:hidden absolute left-0 right-0 bottom-0 h-28 -z-10 bg-gradient-to-b from-transparent to-[#0F1726]" aria-hidden="true"></div>
+        <!-- Horizon en collines, le même que sur la carte de visite, sur toute la largeur de l'écran -->
+        <div class="horizon-courbe -z-10" aria-hidden="true">
+            <svg viewBox="-2 150 348 81" preserveAspectRatio="none">
+                <defs>
+                    <linearGradient id="horizon-terre" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0" stop-color="#121B2E"></stop>
+                        <stop offset="1" stop-color="#0F1726"></stop>
+                    </linearGradient>
+                </defs>
+                <path fill="url(#horizon-terre)" d="M-2 209 C50 209 80 200 116 195 C146 191 166 198 190 199 C214 200 230 190 258 190 C290 190 316 202 346 205 L346 231 L-2 231 Z"></path>
+            </svg>
+            <svg class="horizon-trait" viewBox="-2 150 348 81" preserveAspectRatio="none">
+                <defs>
+                    <linearGradient id="horizon-dore" gradientUnits="userSpaceOnUse" x1="-2" y1="0" x2="346" y2="0">
+                        <stop offset="0" stop-color="#E3C27E" stop-opacity="0.45"></stop>
+                        <stop offset="0.65" stop-color="#F4E3B8" stop-opacity="0.95"></stop>
+                        <stop offset="1" stop-color="#E3C27E" stop-opacity="0.45"></stop>
+                    </linearGradient>
+                </defs>
+                <path fill="none" stroke="url(#horizon-dore)" stroke-width="1.3" vector-effect="non-scaling-stroke" stroke-linecap="round" d="M-2 209 C50 209 80 200 116 195 C146 191 166 198 190 199 C214 200 230 190 258 190 C290 190 316 202 346 205"></path>
+            </svg>
+        </div>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full text-center">
+            <!-- Mobile : l'horizon de la marque, comme une signature au-dessus du titre -->
+            <div class="sm:hidden flex justify-center mb-7" aria-hidden="true">
+                <svg class="horizon-embleme" viewBox="-2 184 348 28" preserveAspectRatio="none">
+                    <defs>
+                        <linearGradient id="embleme-dore" gradientUnits="userSpaceOnUse" x1="-2" y1="0" x2="346" y2="0">
+                            <stop offset="0" stop-color="#E3C27E" stop-opacity="0"></stop>
+                            <stop offset="0.2" stop-color="#E3C27E" stop-opacity="0.7"></stop>
+                            <stop offset="0.65" stop-color="#F4E3B8" stop-opacity="1"></stop>
+                            <stop offset="0.9" stop-color="#E3C27E" stop-opacity="0.6"></stop>
+                            <stop offset="1" stop-color="#E3C27E" stop-opacity="0"></stop>
+                        </linearGradient>
+                    </defs>
+                    <path fill="none" stroke="url(#embleme-dore)" stroke-width="1.4" vector-effect="non-scaling-stroke" stroke-linecap="round" d="M-2 209 C50 209 80 200 116 195 C146 191 166 198 190 199 C214 200 230 190 258 190 C290 190 316 202 346 205"></path>
+                </svg>
+            </div>
+            
+            <h1 class="text-4xl sm:text-6xl lg:text-7xl font-extrabold text-white tracking-tight max-w-5xl mx-auto leading-[1.1] mb-6">
+                Le convoyage automobile <br/>rehaussé au rang <span class="bg-gradient-to-r from-champagne-300 via-champagne-500 to-bronze-500 bg-clip-text text-transparent">d'art de vivre</span>
+            </h1>
+            
+            <p class="text-base sm:text-xl text-gray-300 max-w-2xl mx-auto mb-12 leading-relaxed font-light">
+                Un convoyeur indépendant qui prend personnellement en charge votre véhicule, de la remise des clés à la livraison. Et un service de courtage pour trouver et acheter votre prochaine voiture en toute sérénité.
+            </p>
+            
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-20">
+                <a href="#simulateur" class="w-full sm:w-auto bg-gradient-to-r from-champagne-600 to-champagne-400 text-ebony-900 font-bold px-8 py-4 rounded-xl shadow-xl shadow-champagne-500/20 hover:shadow-champagne-500/40 hover:scale-105 transition-all text-sm tracking-wider uppercase flex items-center justify-center gap-3">
+                    <span>Estimer mon trajet</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </a>
+                <a href="#services" class="w-full sm:w-auto glass-luxury text-white font-semibold px-8 py-4 rounded-xl hover:bg-champagne-500/10 transition-all text-sm tracking-wide flex items-center justify-center gap-2 border border-champagne-500/20">
+                    <i class="fa-solid fa-list-check text-champagne-400"></i> Découvrir les prestations
+                </a>
+            </div>
+
+            <!-- Stats Bar -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+                <div class="glass-luxury p-6 rounded-2xl border border-champagne-500/10">
+                    <div class="text-3xl font-extrabold text-white mb-1">100%</div>
+                    <div class="text-[11px] text-champagne-400/80 uppercase tracking-widest">Discrétion & Sécurité</div>
+                </div>
+                <div class="glass-luxury p-6 rounded-2xl border border-champagne-500/10">
+                    <div class="text-2xl sm:text-3xl font-extrabold text-champagne-400 mb-1 whitespace-nowrap">100 000 €</div>
+                    <div class="text-[11px] text-champagne-400/80 uppercase tracking-widest">Véhicule assuré</div>
+                </div>
+                <div class="glass-luxury p-6 rounded-2xl border border-champagne-500/10">
+                    <div class="text-3xl font-extrabold text-white mb-1">Courtage</div>
+                    <div class="text-[11px] text-champagne-400/80 uppercase tracking-widest">Achat Accompagné</div>
+                </div>
+                <div class="glass-luxury p-6 rounded-2xl border border-champagne-500/10">
+                    <div class="text-3xl font-extrabold text-champagne-400 mb-1">1</div>
+                    <div class="text-[11px] text-champagne-400/80 uppercase tracking-widest">Interlocuteur unique</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Services Section -->
+    <section id="services" class="py-28 bg-ebony-800/80 relative border-t border-b border-champagne-500/10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-20">
+                <span class="text-champagne-400 font-semibold text-xs uppercase tracking-[0.25em] block mb-3">Prestations d'Excellence Simora Horizon</span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-4">Deux services, un seul interlocuteur</h2>
+                <p class="text-gray-300 text-sm font-light">Je m'occupe personnellement de chaque mission, du premier contact jusqu'à la remise des clés.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+                <!-- Service 1 -->
+                <div class="glass-luxury rounded-2xl p-8 border border-champagne-500/15 glass-luxury-hover transition-all duration-300 group hover:-translate-y-1">
+                    <div class="w-14 h-14 rounded-2xl bg-champagne-500/10 text-champagne-400 flex items-center justify-center text-xl mb-6 group-hover:bg-champagne-500 group-hover:text-ebony-900 transition-colors">
+                        <i class="fa-solid fa-car-side"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-white mb-3">Convoyage par la Route</h3>
+                    <p class="text-gray-300 text-sm font-light leading-relaxed mb-6">
+                        Je conduis moi-même votre véhicule jusqu'à sa destination : livraison après achat, déménagement, retour de location ou trajet vers un garage. Conduite souple et nouvelles en temps réel.
+                    </p>
+                    <ul class="space-y-3 text-xs text-gray-300 mb-8">
+                        <li class="flex items-center gap-2.5"><i class="fa-solid fa-check text-champagne-400"></i> Prise en charge par le même convoyeur du départ à l'arrivée</li>
+                        <li class="flex items-center gap-2.5"><i class="fa-solid fa-check text-champagne-400"></i> Carburant et péages inclus</li>
+                        <li class="flex items-center gap-2.5"><i class="fa-solid fa-check text-champagne-400"></i> Nettoyage esthétique avant livraison</li>
+                    </ul>
+                    <a href="#simulateur" class="inline-flex items-center gap-2 text-xs font-semibold tracking-wider uppercase text-champagne-400 hover:text-white transition-colors">
+                        <span>Sélectionner ce service</span> <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                    </a>
+                </div>
+
+                <!-- Service 2 -->
+                <div class="glass-luxury rounded-2xl p-8 border border-champagne-500/15 glass-luxury-hover transition-all duration-300 group hover:-translate-y-1">
+                    <div class="w-14 h-14 rounded-2xl bg-champagne-500/10 text-champagne-400 flex items-center justify-center text-xl mb-6 group-hover:bg-champagne-500 group-hover:text-ebony-900 transition-colors">
+                        <i class="fa-solid fa-handshake"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-white mb-3">Courtage Automobile</h3>
+                    <p class="text-gray-300 text-sm font-light leading-relaxed mb-6">
+                        Vous cherchez une voiture neuve ou d'occasion ? Je la trouve pour vous selon votre budget et vos critères, je vérifie le véhicule, je négocie le prix, puis je vous le livre.
+                    </p>
+                    <ul class="space-y-3 text-xs text-gray-300 mb-8">
+                        <li class="flex items-center gap-2.5"><i class="fa-solid fa-check text-champagne-400"></i> Recherche ciblée selon votre cahier des charges</li>
+                        <li class="flex items-center gap-2.5"><i class="fa-solid fa-check text-champagne-400"></i> Vérification du véhicule et de son historique</li>
+                        <li class="flex items-center gap-2.5"><i class="fa-solid fa-check text-champagne-400"></i> Négociation, démarches et livraison à domicile</li>
+                    </ul>
+                    <a href="#contact" class="inline-flex items-center gap-2 text-xs font-semibold tracking-wider uppercase text-champagne-400 hover:text-white transition-colors">
+                        <span>Parler de mon projet</span> <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Simulateur de Devis Interactif -->
+    <section id="simulateur" class="py-28 relative">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <span class="text-champagne-400 font-semibold text-xs uppercase tracking-[0.25em] block mb-3">Simulateur en Ligne</span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-4">Calculateur de Tarif de Convoyage</h2>
+                <p class="text-gray-300 text-sm font-light">Estimez immédiatement le coût de votre transfert selon vos critères de trajet et de véhicule. Basé à Paris, j'interviens partout en France.</p>
+            </div>
+
+            <div class="glass-luxury rounded-3xl p-4 sm:p-10 border border-champagne-500/20 shadow-2xl glow-champagne">
+                <form id="quote-form" onsubmit="calculateQuote(event)" class="space-y-6">
+                    <!-- Anti-spam (champ invisible) -->
+                    <input type="text" name="_honey" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true">
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                        <!-- Point A : Départ -->
+                        <fieldset class="point" data-point="depart">
+                            <legend class="sr-only">Point A : Départ</legend>
+                            <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
+                                <div class="flex items-center gap-2.5">
+                                    <span class="pastille pastille-a" aria-hidden="true">A</span>
+                                    <span class="text-sm font-semibold text-white">Départ</span>
+                                </div>
+                            </div>
+                            <div class="relative">
+                                <label for="ville-depart" class="block text-xs font-semibold text-gray-300 mb-2">Adresse complète ou ville, puis choisir dans la liste</label>
+                                <input type="text" id="ville-depart" required autocomplete="off" placeholder="Ex : 12 rue de Rivoli, Paris ou simplement Paris" class="w-full bg-ebony-900 border border-champagne-500/30 rounded-xl px-4 py-3.5 text-white placeholder-gray-500 focus:outline-none focus:border-champagne-400 transition-colors text-sm">
+                                <ul id="suggest-depart" class="suggest-list hidden" role="listbox"></ul>
+                            </div>
+                            <div class="mt-4">
+                                <div>
+                                    <label for="depart-complement" class="block text-[11px] text-gray-400 mb-1">Complément (facultatif)</label>
+                                    <input type="text" id="depart-complement" maxlength="120" placeholder="Bâtiment, étage, parking, code d'accès…" class="w-full bg-ebony-900 border border-champagne-500/30 rounded-lg px-3 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-champagne-400 transition-colors text-sm">
+                                </div>
+                            </div>
+                        </fieldset>
+                        <!-- Point B : Arrivée -->
+                        <fieldset class="point" data-point="arrivee">
+                            <legend class="sr-only">Point B : Arrivée</legend>
+                            <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
+                                <div class="flex items-center gap-2.5">
+                                    <span class="pastille pastille-b" aria-hidden="true">B</span>
+                                    <span class="text-sm font-semibold text-white">Arrivée</span>
+                                </div>
+                            </div>
+                            <div class="relative">
+                                <label for="ville-arrivee" class="block text-xs font-semibold text-gray-300 mb-2">Adresse complète ou ville, puis choisir dans la liste</label>
+                                <input type="text" id="ville-arrivee" required autocomplete="off" placeholder="Ex : 5 place Bellecour, Lyon ou simplement Lyon" class="w-full bg-ebony-900 border border-champagne-500/30 rounded-xl px-4 py-3.5 text-white placeholder-gray-500 focus:outline-none focus:border-champagne-400 transition-colors text-sm">
+                                <ul id="suggest-arrivee" class="suggest-list hidden" role="listbox"></ul>
+                            </div>
+                            <div class="mt-4">
+                                <div>
+                                    <label for="arrivee-complement" class="block text-[11px] text-gray-400 mb-1">Complément (facultatif)</label>
+                                    <input type="text" id="arrivee-complement" maxlength="120" placeholder="Bâtiment, étage, parking, code d'accès…" class="w-full bg-ebony-900 border border-champagne-500/30 rounded-lg px-3 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-champagne-400 transition-colors text-sm">
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+
+                    <!-- Carte du trajet -->
+                    <div>
+                        <div id="carte" class="carte" role="region" aria-label="Carte du trajet entre le départ (A) et l'arrivée (B)"></div>
+                        <p class="text-[11px] text-gray-500 mt-2">Les points A et B s'affichent dès que vous choisissez une adresse. Vous pouvez faire glisser un repère pour ajuster l'emplacement exact.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <!-- Type de Véhicule -->
+                    <div>
+                        <label for="type-vehicule" class="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">
+                            <i class="fa-solid fa-car text-champagne-400 mr-1.5"></i> Catégorie de Véhicule
+                        </label>
+                        <select id="type-vehicule" class="w-full bg-ebony-900 border border-champagne-500/30 rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-champagne-400 transition-colors text-sm">
+                            <option value="standard" selected>Citadine / Berline</option>
+                            <option value="suv">SUV / Utilitaire / Premium</option>
+                            <option value="sport">Haut de gamme / Sportive (≤ 100 000 €)</option>
+                        </select>
+                        <p class="text-[11px] text-gray-500 mt-1.5">Véhicules d'une valeur supérieure à 100 000 € non acceptés.</p>
+                    </div>
+                    <!-- Date souhaitée -->
+                    <div>
+                        <label for="date-souhaitee" class="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">
+                            <i class="fa-solid fa-calendar-day text-champagne-400 mr-1.5"></i> Date de prise en charge souhaitée
+                        </label>
+                        <input type="date" id="date-souhaitee" required class="w-full bg-ebony-900 border border-champagne-500/30 rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-champagne-400 transition-colors text-sm [color-scheme:dark]">
+                        <p class="text-[11px] text-gray-500 mt-1.5">Prise en charge sous 48 h : majoration urgence de 20 %.</p>
+                    </div>
+                    </div>
+
+                    <!-- Coordonnées Client -->
+                    <div class="pt-4 border-t border-champagne-500/15 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div>
+                            <label for="client-nom" class="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">Nom ou Raison Sociale</label>
+                            <input type="text" id="client-nom" name="nom" required placeholder="Alexandre de Montmirail" class="w-full bg-ebony-900 border border-champagne-500/30 rounded-xl px-4 py-3.5 text-white placeholder-gray-500 focus:outline-none focus:border-champagne-400 transition-colors text-sm">
+                        </div>
+                        <div>
+                            <label for="client-email" class="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">Adresse E-mail</label>
+                            <input type="email" id="client-email" name="email" required placeholder="vous@exemple.fr" class="w-full bg-ebony-900 border border-champagne-500/30 rounded-xl px-4 py-3.5 text-white placeholder-gray-500 focus:outline-none focus:border-champagne-400 transition-colors text-sm">
+                        </div>
+                    </div>
+
+                    <button type="submit" id="quote-btn" class="w-full disabled:opacity-60 disabled:cursor-wait bg-gradient-to-r from-champagne-600 to-champagne-400 text-ebony-900 font-extrabold py-4 rounded-xl shadow-xl shadow-champagne-500/20 hover:shadow-champagne-500/40 hover:scale-[1.01] transition-all text-sm tracking-wider sm:tracking-widest uppercase flex items-center justify-center gap-3">
+                        <i class="fa-solid fa-calculator"></i> <span id="quote-btn-label">Calculer mon devis</span>
+                    </button>
+                    <p class="text-[11px] text-gray-500 text-center">Vos informations servent uniquement à traiter votre demande. <a href="confidentialite.html" class="text-champagne-400 hover:text-champagne-300 underline">Politique de confidentialité</a> · <a href="cgv.html" class="text-champagne-400 hover:text-champagne-300 underline">CGV</a></p>
+                </form>
+
+                <!-- Résultat du Devis (Caché par défaut) -->
+                <div id="quote-result" class="hidden mt-8 p-6 sm:p-8 rounded-2xl bg-ebony-900 border border-champagne-500/40 animate-fadeIn">
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 pb-6 border-b border-champagne-500/20 gap-4">
+                        <div class="flex items-center gap-3.5">
+                            <div class="w-12 h-12 rounded-2xl bg-champagne-500/20 text-champagne-400 flex items-center justify-center text-xl">
+                                <i class="fa-solid fa-file-invoice-dollar"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-lg font-bold text-white">Estimation Simora Horizon</h4>
+                                <p class="text-xs text-champagne-400 font-medium" id="result-route-desc">Trajet calculé</p>
+                            </div>
+                        </div>
+                        <div class="text-left sm:text-right">
+                            <span class="text-3xl font-black text-champagne-400" id="result-price">0 €</span>
+                            <span class="block text-[10px] text-gray-400 uppercase tracking-widest">Prix net estimé</span>
+                            <span class="block text-[10px] text-gray-500 mt-0.5">TVA non applicable, art. 293 B du CGI</span>
+                            <span id="result-extras" class="hidden block text-[11px] text-champagne-300/90 mt-2 max-w-xs sm:ml-auto"></span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs mb-8">
+                        <div class="bg-ebony-800 p-3.5 rounded-xl border border-champagne-500/10">
+                            <span class="block text-gray-400 mb-1">Distance par la route</span>
+                            <span class="font-bold text-white text-sm" id="result-distance">-- km</span>
+                        </div>
+                        <div class="bg-ebony-800 p-3.5 rounded-xl border border-champagne-500/10">
+                            <span class="block text-gray-400 mb-1">Durée estimée (pauses et états des lieux inclus)</span>
+                            <span class="font-bold text-white text-sm" id="result-duration">-- h</span>
+                        </div>
+                        <div class="bg-ebony-800 p-3.5 rounded-xl border border-champagne-500/10">
+                            <span class="block text-gray-400 mb-1">Niveau de protection</span>
+                            <span class="font-bold text-champagne-400 text-sm">Véhicule assuré jusqu'à 100 000 €</span>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row gap-3.5">
+                        <button type="button" id="booking-btn" onclick="confirmBooking()" class="flex-1 disabled:opacity-60 disabled:cursor-wait bg-gradient-to-r from-champagne-600 to-champagne-400 text-ebony-900 font-bold py-3.5 rounded-xl shadow-lg shadow-champagne-500/20 hover:shadow-champagne-500/40 transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-circle-check"></i> <span id="booking-btn-label">Réserver ce convoyage</span>
+                        </button>
+                        <button type="button" onclick="resetForm()" class="px-6 py-3.5 bg-champagne-500/10 hover:bg-champagne-500/20 text-champagne-400 font-semibold rounded-xl transition-colors text-xs uppercase tracking-wider border border-champagne-500/30">
+                            Nouvelle Simulation
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section Garanties & Confiance -->
+    <section id="garanties" class="py-28 bg-ebony-800/80 border-t border-b border-champagne-500/10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-20">
+                <span class="text-champagne-400 font-semibold text-xs uppercase tracking-[0.25em] block mb-3">Sécurité & Sérénité Absolue</span>
+                <h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-4">Pourquoi confier votre véhicule à Simora Horizon</h2>
+                <p class="text-gray-300 text-sm font-light">Une rigueur professionnelle sans compromis sur l'intégrité de votre véhicule.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <!-- Garantie 1 -->
+                <div class="glass-luxury p-8 rounded-2xl border border-champagne-500/15">
+                    <div class="w-12 h-12 rounded-2xl bg-champagne-500/10 text-champagne-400 flex items-center justify-center text-xl mb-6">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-white mb-2.5">Véhicule Assuré & RC Pro</h3>
+                    <p class="text-gray-300 text-sm font-light leading-relaxed">
+                        Chaque véhicule qui m'est confié est assuré pendant tout le convoyage par un contrat spécifique au convoyage professionnel : dommages, vol et vandalisme, jusqu'à 100 000 € par véhicule. Je suis également couvert en responsabilité civile professionnelle.
+                    </p>
+                </div>
+
+                <!-- Garantie 2 -->
+                <div class="glass-luxury p-8 rounded-2xl border border-champagne-500/15">
+                    <div class="w-12 h-12 rounded-2xl bg-champagne-500/10 text-champagne-400 flex items-center justify-center text-xl mb-6">
+                        <i class="fa-solid fa-clipboard-list"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-white mb-2.5">État des Lieux Numérique 40 Points</h3>
+                    <p class="text-gray-300 text-sm font-light leading-relaxed">
+                        Inspection photographique et technique minutieuse au départ et à l'arrivée, partagée en direct pour attester de l'état irréprochable de l'automobile.
+                    </p>
+                </div>
+
+                <!-- Garantie 3 -->
+                <div class="glass-luxury p-8 rounded-2xl border border-champagne-500/15">
+                    <div class="w-12 h-12 rounded-2xl bg-champagne-500/10 text-champagne-400 flex items-center justify-center text-xl mb-6">
+                        <i class="fa-solid fa-user-tie"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-white mb-2.5">Un Seul Interlocuteur</h3>
+                    <p class="text-gray-300 text-sm font-light leading-relaxed">
+                        Pas de sous-traitance ni d'intermédiaire : c'est moi qui vous réponds, qui récupère votre véhicule et qui vous le livre. Vous savez toujours à qui vous confiez vos clés.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section À Propos -->
+    <section id="apropos" class="py-28 relative">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+                <div>
+                    <span class="text-champagne-400 font-semibold text-xs uppercase tracking-[0.25em] block mb-3">La Philosophie Simora Horizon</span>
+                    <h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mb-6">Une nouvelle activité, une exigence intacte</h2>
+                    <p class="text-gray-300 text-sm font-light leading-relaxed mb-6">
+                        <strong class="text-white font-semibold">Simora Horizon</strong> est une jeune entreprise que je viens de lancer, avec une conviction simple : votre véhicule mérite autant de soin qu'un objet précieux. Je travaille seul, ce qui me permet de garder un lien direct avec chacun de mes clients.
+                    </p>
+                    <p class="text-gray-300 text-sm font-light leading-relaxed mb-8">
+                        Qu'il s'agisse de convoyer votre voiture d'une ville à l'autre ou de vous aider à trouver et acheter le véhicule idéal, j'apporte la même attention à chaque mission.
+                    </p>
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="border-l-2 border-champagne-400 pl-4">
+                            <span class="block text-2xl font-black text-white mb-1">24h / 48h</span>
+                            <span class="text-[11px] text-champagne-400/80 uppercase tracking-widest">Planification express</span>
+                        </div>
+                        <div class="border-l-2 border-champagne-500 pl-4">
+                            <span class="block text-2xl font-black text-white mb-1">100%</span>
+                            <span class="text-[11px] text-champagne-400/80 uppercase tracking-widest">Traçabilité assurée</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-luxury p-8 sm:p-10 rounded-3xl border border-champagne-500/20 relative overflow-hidden">
+                    <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-champagne-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                    <h3 class="text-xl font-bold text-white mb-6 flex items-center gap-3">
+                        <i class="fa-solid fa-headset text-champagne-400"></i> Contact Direct
+                    </h3>
+                    <p class="text-gray-300 text-sm font-light mb-8 leading-relaxed">
+                        Je suis joignable directement pour répondre à vos questions et préparer votre convoyage ou votre projet d'achat.
+                    </p>
+                    <div class="space-y-4 mb-8">
+                        <div class="flex items-center gap-4 text-gray-300">
+                            <div class="w-10 h-10 rounded-xl bg-champagne-500/10 flex items-center justify-center text-champagne-400">
+                                <i class="fa-solid fa-phone"></i>
+                            </div>
+                            <div>
+                                <span class="block text-[10px] text-gray-400 uppercase tracking-wider">Ligne directe</span>
+                                <a href="tel:0612133886" class="font-bold text-white text-sm hover:text-champagne-400 transition-colors">06 12 13 38 86</a>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4 text-gray-300">
+                            <div class="w-10 h-10 rounded-xl bg-champagne-500/10 flex items-center justify-center text-champagne-400">
+                                <i class="fa-solid fa-envelope"></i>
+                            </div>
+                            <div>
+                                <span class="block text-[10px] text-gray-400 uppercase tracking-wider">Courriel</span>
+                                <a href="mailto:simorahorizon@gmail.com" class="font-bold text-white text-sm hover:text-champagne-400 transition-colors">simorahorizon@gmail.com</a>
+                            </div>
+                        </div>
+                    </div>
+                    <a href="#contact" class="w-full bg-champagne-500/10 hover:bg-champagne-500/20 text-champagne-400 font-semibold py-3.5 rounded-xl transition-colors text-xs uppercase tracking-widest flex items-center justify-center gap-2 border border-champagne-500/30">
+                        <span>M'écrire un message</span> <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section Contact & FAQ -->
+    <section id="contact" class="py-28 bg-ebony-800/80 border-t border-champagne-500/10">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                <!-- FAQ -->
+                <div>
+                    <span class="text-champagne-400 font-semibold text-xs uppercase tracking-[0.25em] block mb-3">F.A.Q</span>
+                    <h2 class="text-3xl font-extrabold text-white tracking-tight mb-8">Questions Fréquentes</h2>
+                    
+                    <div class="space-y-4">
+                        <div class="glass-luxury p-5 rounded-2xl border border-champagne-500/15">
+                            <h4 class="font-bold text-white text-sm mb-2">
+                                <span>Dois-je fournir le carburant et les péages ?</span>
+                            </h4>
+                            <p class="text-gray-300 text-xs font-light leading-relaxed">
+                                Non. Le prix de votre devis est un forfait tout compris : le carburant et les péages autoroutiers sont déjà inclus. Vous n'avez rien à avancer ni à rembourser.
+                            </p>
+                        </div>
+
+                        <div class="glass-luxury p-5 rounded-2xl border border-champagne-500/15">
+                            <h4 class="font-bold text-white text-sm mb-2">
+                                <span>Quels documents sont requis pour le convoyage ?</span>
+                            </h4>
+                            <p class="text-gray-300 text-xs font-light leading-relaxed">
+                                La carte grise originale ou copie conforme, un double des clés, l'attestation d'assurance en cours de validité ainsi qu'un justificatif d'identité.
+                            </p>
+                        </div>
+
+                        <div class="glass-luxury p-5 rounded-2xl border border-champagne-500/15">
+                            <h4 class="font-bold text-white text-sm mb-2">
+                                <span>Quel est le délai pour planifier un transport ?</span>
+                            </h4>
+                            <p class="text-gray-300 text-xs font-light leading-relaxed">
+                                Idéalement, réservez quelques jours à l'avance : je travaille seul, une mission à la fois. En cas d'urgence, je peux souvent intervenir sous 48 heures selon mes disponibilités, avec une majoration de 20 % sur le prix du trajet.
+                            </p>
+                        </div>
+
+                        <div class="glass-luxury p-5 rounded-2xl border border-champagne-500/15">
+                            <h4 class="font-bold text-white text-sm mb-2">
+                                <span>Intervenez-vous en dehors de Paris ?</span>
+                            </h4>
+                            <p class="text-gray-300 text-xs font-light leading-relaxed">
+                                Je suis basé à Paris. Tout trajet qui part d'Île-de-France ou qui y arrive est au prix du simulateur, quelle que soit la destination en France. Pour un trajet entièrement en dehors de l'Île-de-France (par exemple Lyon → Marseille), de petits frais de déplacement sont ajoutés automatiquement pour me rendre jusqu'à votre véhicule (jamais plus de 15 % du prix du trajet). Pour les trajets de plus de 800 km, une nuit d'hôtel est incluse dans le devis (livraison le lendemain).
+                            </p>
+                        </div>
+
+                        <div class="glass-luxury p-5 rounded-2xl border border-champagne-500/15">
+                            <h4 class="font-bold text-white text-sm mb-2">
+                                <span>Comment fonctionne le courtage automobile ?</span>
+                            </h4>
+                            <p class="text-gray-300 text-xs font-light leading-relaxed">
+                                Vous me décrivez le véhicule recherché et votre budget. Je sélectionne des annonces, contrôle le véhicule et son historique, négocie le prix et peux ensuite vous le livrer directement.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Formulaire de Contact Direct -->
+                <div>
+                    <div class="glass-luxury p-8 sm:p-10 rounded-3xl border border-champagne-500/20">
+                        <span class="text-champagne-400 font-semibold text-xs uppercase tracking-[0.25em] block mb-2">Message direct</span>
+                        <h3 class="text-2xl font-bold text-white mb-6">Contactez Simora Horizon</h3>
+
+                        <form id="contact-form" onsubmit="submitContact(event)" class="space-y-4">
+                            <!-- Anti-spam (champ invisible) -->
+                            <input type="text" name="_honey" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true">
+                            <div>
+                                <label for="contact-nom" class="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">Votre Nom</label>
+                                <input type="text" id="contact-nom" name="nom" required placeholder="Éléonore de Saint-Cloud" class="w-full bg-ebony-900 border border-champagne-500/30 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-champagne-400 transition-colors text-sm">
+                            </div>
+                            <div>
+                                <label for="contact-email" class="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">Votre Email</label>
+                                <input type="email" id="contact-email" name="email" required placeholder="eleonore@example.com" class="w-full bg-ebony-900 border border-champagne-500/30 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-champagne-400 transition-colors text-sm">
+                            </div>
+                            <div>
+                                <label for="contact-message" class="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">Votre Message</label>
+                                <textarea id="contact-message" name="message" rows="4" required placeholder="Précisez votre demande de convoyage ou de courtage..." class="w-full bg-ebony-900 border border-champagne-500/30 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-champagne-400 transition-colors text-sm"></textarea>
+                            </div>
+                            <button type="submit" id="contact-btn" class="w-full disabled:opacity-60 disabled:cursor-wait bg-gradient-to-r from-champagne-600 to-champagne-400 text-ebony-900 font-bold py-3.5 rounded-xl shadow-lg shadow-champagne-500/20 hover:shadow-champagne-500/40 transition-all text-xs uppercase tracking-widest">
+                                Transmettre le Message
+                            </button>
+                            <p class="text-[11px] text-gray-500 text-center">Vos informations servent uniquement à vous répondre. <a href="confidentialite.html" class="text-champagne-400 hover:text-champagne-300 underline">Politique de confidentialité</a></p>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-ebony-900 border-t border-champagne-500/15 py-12 text-xs text-gray-400">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-bronze-600 to-champagne-400 flex items-center justify-center text-ebony-900 font-bold text-sm">
+                    <i class="fa-solid fa-crown text-xs"></i>
+                </div>
+                <span class="text-sm font-bold tracking-wider text-white">SIMORA HORIZON</span>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-center gap-6 text-[11px]">
+                <a href="mentions-legales.html" class="hover:text-champagne-400 transition-colors">Mentions légales</a>
+                <a href="confidentialite.html" class="hover:text-champagne-400 transition-colors">Politique de confidentialité</a>
+                <a href="cgv.html" class="hover:text-champagne-400 transition-colors">Conditions générales de vente</a>
+            </div>
+
+            <div class="text-[11px] text-gray-500 text-center md:text-right">
+                &copy; 2026 Simora Horizon. Tous droits réservés.
+                <span class="block mt-1">TVA non applicable, art. 293 B du CGI</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Notification Toast -->
+    <div id="toast-notification" class="fixed bottom-6 right-6 left-6 sm:left-auto sm:max-w-sm z-50 transform translate-y-32 opacity-0 transition-all duration-300 glass-luxury border border-champagne-500/50 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3">
+        <div id="toast-icon" class="w-8 h-8 shrink-0 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <i id="toast-icon-glyph" class="fa-solid fa-check text-xs"></i>
+        </div>
+        <div>
+            <h5 class="font-bold text-white text-xs uppercase tracking-wider" id="toast-title">Succès</h5>
+            <p class="text-[11px] text-gray-300 font-light" id="toast-desc">Opération effectuée avec succès.</p>
+        </div>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // ===================== Réglages =====================
+        // Adresse qui reçoit les demandes (via le service gratuit FormSubmit)
+        const FORM_ENDPOINT = 'https://formsubmit.co/ajax/simorahorizon@gmail.com';
+
+        // Tarif dégressif par tranches (comme l'impôt) : chaque tranche garde son propre prix au km
+        // Prix plancher d'une mission selon la catégorie (€) — calé pour que 100 km tombe au prix du marché
+        const PRIX_MINIMUM = { standard: 90, suv: 110, sport: 140 };
+        const TRANCHES = [
+            { jusqua: 200,      prix: 1.30 },  // les 200 premiers km
+            { jusqua: 500,      prix: 1.10 },  // de 200 à 500 km
+            { jusqua: 800,      prix: 0.95 },  // de 500 à 800 km
+            { jusqua: Infinity, prix: 0.90 }   // au-delà de 800 km
+        ];
+        function prixKilometrique(km) {
+            let total = 0, debut = 0;
+            for (const t of TRANCHES) {
+                if (km <= debut) break;
+                total += (Math.min(km, t.jusqua) - debut) * t.prix;
+                debut = t.jusqua;
+            }
+            return total;
+        }
+
+        // Durée : temps de route + 20 min de pause par tranche de 200 km + 45 min d'états des lieux (départ et arrivée)
+        const PAUSE_PAR_200KM_MIN = 20;
+        const ETATS_DES_LIEUX_MIN = 45;
+        function dureeConvoyage(secondesRoute, km) {
+            const pauses = Math.floor(km / 200) * PAUSE_PAR_200KM_MIN;
+            return secondesRoute + (pauses + ETATS_DES_LIEUX_MIN) * 60;
+        }
+        // Coefficient par catégorie : le supplément « véhicule de valeur » s'applique surtout aux premiers km
+        // (risque et soin à la prise en charge), puis un coefficient plus doux au-delà du seuil.
+        const COEF_VEHICULE = {
+            standard: { coef: 1.0,  ensuite: 1.0,  seuil: Infinity },
+            suv:      { coef: 1.25, ensuite: 1.10, seuil: 500 },  // ×1,25 jusqu'à 500 km, puis ×1,10
+            sport:    { coef: 1.6,  ensuite: 1.15, seuil: 200 }   // ×1,6 jusqu'à 200 km, puis ×1,15
+        };
+        function prixVehicule(km, type) {
+            const c = COEF_VEHICULE[type] || COEF_VEHICULE.standard;
+            const avantSeuil = prixKilometrique(Math.min(km, c.seuil));
+            return avantSeuil * c.coef + (prixKilometrique(km) - avantSeuil) * c.ensuite;
+        }
+
+        // Nuitée d'hôtel ajoutée automatiquement au-delà de 800 km (une par tranche de 800 km)
+        // Zone habituelle : Paris et Île-de-France (rayon de 80 km à vol d'oiseau autour de Paris).
+        // Si ni le départ ni l'arrivée n'y sont, on ajoute de petits frais de déplacement :
+        // le trajet en plus que Steve fait pour rejoindre la voiture puis rentrer à Paris,
+        // au prix d'un billet de train à tarif réduit (0,05 €/km), plafonné à 15 % du prix du trajet
+        // pour rester dans la fourchette du marché.
+        const BASE = { lat: 48.8534, lon: 2.3488 };
+        const RAYON_ZONE_KM = 80;
+        function distanceDeParis(place) {
+            const rad = x => x * Math.PI / 180;
+            const dLat = rad(place.lat - BASE.lat), dLon = rad(place.lon - BASE.lon);
+            const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(BASE.lat)) * Math.cos(rad(place.lat)) * Math.sin(dLon / 2) ** 2;
+            return 6371 * 2 * Math.asin(Math.sqrt(a));
+        }
+        function horsZone(from, to) {
+            return distanceDeParis(from) > RAYON_ZONE_KM && distanceDeParis(to) > RAYON_ZONE_KM;
+        }
+        const FACTEUR_ROUTE = 1.3;            // vol d'oiseau → distance par la route (estimation)
+        const PRIX_DEPLACEMENT_KM = 0.05;     // ≈ prix au km d'un billet de train à tarif réduit
+        const PLAFOND_DEPLACEMENT = 0.15;     // au maximum 15 % du prix du trajet
+        function fraisDeplacement(from, to, distanceKm, prixTrajet) {
+            if (!horsZone(from, to)) return 0;
+            const kmEnPlus = (distanceDeParis(from) + distanceDeParis(to)) * FACTEUR_ROUTE - distanceKm;
+            const frais = Math.round(Math.min(kmEnPlus * PRIX_DEPLACEMENT_KM, prixTrajet * PLAFOND_DEPLACEMENT));
+            return frais >= 10 ? frais : 0;   // on ignore les tout petits montants
+        }
+
+        // Urgence : +20 % sur le prix du trajet si la prise en charge est demandée pour aujourd'hui ou demain
+        const MAJORATION_URGENCE = 0.20;
+        function joursAvantPriseEnCharge(valeurDate) {
+            const [a, m, j] = valeurDate.split('-').map(Number);
+            const choisie = new Date(a, m - 1, j);
+            const aujourdhui = new Date();
+            aujourdhui.setHours(0, 0, 0, 0);
+            return Math.round((choisie - aujourdhui) / 86400000);
+        }
+        function dateEnLettres(valeurDate) {
+            const [a, m, j] = valeurDate.split('-').map(Number);
+            return new Date(a, m - 1, j).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        }
+
+        const SEUIL_NUITEE_KM = 800;
+        const PRIX_NUITEE = 100;
+
+        function nombreNuitees(distanceKm) {
+            return distanceKm > SEUIL_NUITEE_KM ? Math.ceil(distanceKm / SEUIL_NUITEE_KM) - 1 : 0;
+        }
+        const MENTION_TVA = 'TVA non applicable, art. 293 B du CGI';
+
+        // ===================== Menu mobile =====================
+        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+        const mobileMenu = document.getElementById('mobile-menu');
+
+        mobileMenuBtn.addEventListener('click', () => {
+            mobileMenu.classList.toggle('hidden');
+        });
+
+        mobileMenu.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                mobileMenu.classList.add('hidden');
+            });
+        });
+
+        // ===================== Points A (départ) et B (arrivée) =====================
+        // France : Géoplateforme IGN (Base Adresse Nationale). Étranger : Photon (OpenStreetMap).
+        const selections = { depart: null, arrivee: null };
+
+        const ICONES = {
+            housenumber: 'fa-house',
+            street: 'fa-road',
+            municipality: 'fa-city',
+            locality: 'fa-location-dot',
+            etranger: 'fa-earth-europe'
+        };
+
+        function itemFrance(f) {
+            const p = f.properties;
+            const [lon, lat] = f.geometry.coordinates;
+            return {
+                lon, lat,
+                num: p.housenumber || '',
+                rue: p.street || (p.type === 'street' || p.type === 'locality' ? p.name : ''),
+                cp: p.postcode || '',
+                ville: p.city || (p.type === 'municipality' ? p.name : ''),
+                pays: 'France',
+                countrycode: 'FR',
+                label: p.type === 'municipality' && p.postcode ? `${p.label} (${p.postcode})` : p.label,
+                sub: p.context || '',
+                icon: ICONES[p.type] || ICONES.locality
+            };
+        }
+
+        function itemMonde(f) {
+            const p = f.properties;
+            const [lon, lat] = f.geometry.coordinates;
+            const rue = p.street ? [p.housenumber, p.street].filter(Boolean).join(' ') : null;
+            const principal = rue || p.name || p.city || '';
+            const ville = p.city || (['city', 'town', 'village'].includes(p.type) ? p.name : '') || '';
+            const villeLabel = [p.postcode, ville && ville !== principal ? ville : null].filter(Boolean).join(' ');
+            return {
+                lon, lat,
+                num: p.street ? (p.housenumber || '') : '',
+                rue: p.street || '',
+                cp: p.postcode || '',
+                ville,
+                pays: p.country || '',
+                countrycode: (p.countrycode || '').toUpperCase(),
+                label: [principal, villeLabel, p.country].filter(Boolean).join(', '),
+                sub: [p.state, p.country].filter(Boolean).join(', '),
+                icon: ICONES.etranger
+            };
+        }
+
+        async function lireJson(url) {
+            return fetch(url).then(res => res.ok ? res.json() : null).catch(() => null);
+        }
+
+        async function chercherAdresses(query) {
+            const [fr, monde] = await Promise.all([
+                lireJson(`https://data.geopf.fr/geocodage/search?q=${encodeURIComponent(query)}&limit=6&autocomplete=1`),
+                lireJson(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=6&lang=fr`)
+            ]);
+            const france = (fr && fr.features ? fr.features : []).map(itemFrance);
+            // La BAN est plus précise pour la France : Photon ne sert que pour l'étranger
+            const etranger = (monde && monde.features ? monde.features : []).map(itemMonde)
+                .filter(p => p.countrycode && p.countrycode !== 'FR')
+                .slice(0, france.length ? 3 : 6);
+            return [...france, ...etranger];
+        }
+
+        // Adresse la plus proche d'un point (quand on déplace le repère sur la carte)
+        async function adresseAuPoint(lat, lon) {
+            const fr = await lireJson(`https://data.geopf.fr/geocodage/reverse?lon=${lon}&lat=${lat}&limit=1`);
+            if (fr && fr.features && fr.features.length) return { ...itemFrance(fr.features[0]), lat, lon };
+            const monde = await lireJson(`https://photon.komoot.io/reverse?lon=${lon}&lat=${lat}&lang=fr`);
+            if (monde && monde.features && monde.features.length) return { ...itemMonde(monde.features[0]), lat, lon };
+            return null;
+        }
+
+        function adresseEnClair(item, complement) {
+            if (!item) return '';
+            const ligne1 = [item.num, item.rue].filter(Boolean).join(' ');
+            const ligne2 = [item.cp, item.ville].filter(Boolean).join(' ');
+            const base = [ligne1, ligne2, item.pays && item.pays !== 'France' ? item.pays : null].filter(Boolean).join(', ') || item.label;
+            return complement ? `${base} (${complement})` : base;
+        }
+
+        // ===================== Carte (Leaflet + OpenStreetMap) =====================
+        const carte = (function () {
+            const vide = { placer() {}, retirer() {}, tracer() {}, effacerTrace() {} };
+            if (typeof L === 'undefined' || !document.getElementById('carte')) return vide;
+
+            const map = L.map('carte', { scrollWheelZoom: false, attributionControl: true }).setView([46.6, 2.4], 5);
+            // Fond de carte : Plan IGN (Géoplateforme, carte officielle française, gratuite et sans clé)
+            L.tileLayer('https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&FORMAT=image/png&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}', {
+                minZoom: 2,
+                maxZoom: 19,
+                attribution: 'Carte &copy; <a href="https://www.ign.fr/" target="_blank" rel="noopener">IGN</a> · Itinéraires &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+            }).addTo(map);
+            map.attributionControl.setPrefix(false);
+
+            const icone = lettre => L.divIcon({
+                className: '',
+                html: `<span class="repere repere-${lettre.toLowerCase()}">${lettre}</span>`,
+                iconSize: [32, 32],
+                iconAnchor: [16, 16]
+            });
+            const reperes = {};
+            let trace = null;
+
+            function cadrer() {
+                const pts = Object.values(reperes).map(m => m.getLatLng());
+                if (trace) pts.push(...trace.getLatLngs());
+                if (pts.length === 1) map.setView(pts[0], 13);
+                else if (pts.length > 1) map.fitBounds(L.latLngBounds(pts), { padding: [40, 40] });
+            }
+
+            return {
+                placer(key, item, deplacable) {
+                    if (reperes[key]) map.removeLayer(reperes[key]);
+                    const m = L.marker([item.lat, item.lon], {
+                        icon: icone(key === 'depart' ? 'A' : 'B'),
+                        draggable: deplacable,
+                        title: key === 'depart' ? 'Départ' : 'Arrivée'
+                    }).addTo(map);
+                    if (deplacable) {
+                        m.on('dragend', async () => {
+                            const { lat, lng } = m.getLatLng();
+                            const trouve = await adresseAuPoint(lat, lng);
+                            points[key].majDepuisCarte(trouve || { ...selections[key], lat, lon: lng });
+                        });
+                    }
+                    reperes[key] = m;
+                    cadrer();
+                },
+                retirer(key) {
+                    if (reperes[key]) { map.removeLayer(reperes[key]); delete reperes[key]; }
+                    cadrer();
+                },
+                tracer(coords) {
+                    if (trace) map.removeLayer(trace);
+                    trace = L.polyline(coords.map(([lon, lat]) => [lat, lon]), { color: '#E3C27E', weight: 4, opacity: 0.9 }).addTo(map);
+                    Object.values(reperes).forEach(m => m.bringToFront && m.bringToFront());
+                    cadrer();
+                },
+                effacerTrace() {
+                    if (trace) { map.removeLayer(trace); trace = null; }
+                }
+            };
+        })();
+
+        // ===================== Fiche d'un point (recherche + champs + mode) =====================
+        function setupPoint(key) {
+            const input = document.getElementById('ville-' + key);
+            const list = document.getElementById('suggest-' + key);
+            const champ = nom => document.getElementById(`${key}-${nom}`);
+            let items = [];
+            let active = -1;
+            let timer = null;
+            let requete = 0;
+
+            // « ville » si la personne a choisi une ville sans rue, sinon « adresse »
+            const mode = () => (selections[key] && !selections[key].rue ? 'ville' : 'adresse');
+
+            function fermer() {
+                list.classList.add('hidden');
+                active = -1;
+            }
+
+            function afficherListe() {
+                list.innerHTML = '';
+                if (!items.length) {
+                    const li = document.createElement('li');
+                    li.className = 'suggest-empty';
+                    li.textContent = 'Aucun résultat. Essayez avec le code postal ou le nom de la ville.';
+                    list.appendChild(li);
+                } else {
+                    items.forEach((item, i) => {
+                        const li = document.createElement('li');
+                        li.className = 'suggest-item' + (i === active ? ' active' : '');
+                        li.setAttribute('role', 'option');
+                        li.innerHTML = `<i class="fa-solid ${item.icon}"></i><div><span class="suggest-main"></span><span class="suggest-sub"></span></div>`;
+                        li.querySelector('.suggest-main').textContent = item.label;
+                        li.querySelector('.suggest-sub').textContent = item.sub;
+                        // mousedown plutôt que click : se déclenche avant que le champ perde le focus
+                        li.addEventListener('mousedown', e => {
+                            e.preventDefault();
+                            choisir(items[i]);
+                        });
+                        list.appendChild(li);
+                    });
+                }
+                list.classList.remove('hidden');
+                if (active >= 0 && list.children[active]) {
+                    list.children[active].scrollIntoView({ block: 'nearest' });
+                }
+            }
+
+            function choisir(item) {
+                if (!item) return;
+                selections[key] = item;
+                input.value = item.label;
+                input.classList.add('is-valid');
+                fermer();
+                carte.placer(key, item, true);
+                surChangementTrajet();
+            }
+
+            function invalider() {
+                if (!selections[key]) return;
+                selections[key] = null;
+                input.classList.remove('is-valid');
+                carte.retirer(key);
+                surChangementTrajet();
+            }
+
+            async function rechercher(query) {
+                const id = ++requete;
+                const resultats = await chercherAdresses(query);
+                if (id !== requete) return; // une frappe plus récente a pris le relais
+                items = resultats;
+                active = -1;
+                afficherListe();
+            }
+
+            input.addEventListener('input', () => {
+                invalider();
+                clearTimeout(timer);
+                const query = input.value.trim();
+                if (query.length < 3) {
+                    requete++;
+                    items = [];
+                    fermer();
+                    return;
+                }
+                timer = setTimeout(() => rechercher(query), 250);
+            });
+
+            input.addEventListener('keydown', e => {
+                const ouverte = !list.classList.contains('hidden') && items.length > 0;
+                if (e.key === 'ArrowDown' && ouverte) {
+                    e.preventDefault();
+                    active = (active + 1) % items.length;
+                    afficherListe();
+                } else if (e.key === 'ArrowUp' && ouverte) {
+                    e.preventDefault();
+                    active = (active - 1 + items.length) % items.length;
+                    afficherListe();
+                } else if (e.key === 'Enter' && ouverte) {
+                    e.preventDefault();
+                    choisir(items[active >= 0 ? active : 0]);
+                } else if (e.key === 'Escape') {
+                    fermer();
+                }
+            });
+
+            input.addEventListener('focus', () => {
+                if (!selections[key] && items.length) afficherListe();
+            });
+            input.addEventListener('blur', () => setTimeout(fermer, 150));
+
+            return {
+                complement: () => champ('complement').value.trim(),
+                mode,
+                majDepuisCarte(item) {
+                    selections[key] = item;
+                    input.value = item.label;
+                    input.classList.add('is-valid');
+                    surChangementTrajet();
+                },
+                vider() {
+                    selections[key] = null;
+                    items = [];
+                    input.classList.remove('is-valid');
+                    fermer();
+                    carte.retirer(key);
+                }
+            };
+        }
+
+        const points = {
+            depart: setupPoint('depart'),
+            arrivee: setupPoint('arrivee')
+        };
+
+        // Quand A ou B change : on efface l'ancien devis et on trace le nouveau trajet sur la carte
+        let jetonTrace = 0;
+        async function surChangementTrajet() {
+            masquerResultat();
+            carte.effacerTrace();
+            const { depart, arrivee } = selections;
+            if (!depart || !arrivee) return;
+            const jeton = ++jetonTrace;
+            try {
+                const route = await getRoute(depart, arrivee);
+                if (jeton === jetonTrace && route.coords) carte.tracer(route.coords);
+            } catch (e) { /* le tracé est un bonus : le calcul du devis affichera l'erreur si besoin */ }
+        }
+
+        function masquerResultat() {
+            document.getElementById('quote-result').classList.add('hidden');
+            dernierDevis = null;
+        }
+
+        // ===================== Itinéraire =====================
+        const cacheItineraires = new Map();
+        async function getRoute(from, to) {
+            const cle = `${from.lon},${from.lat};${to.lon},${to.lat}`;
+            if (cacheItineraires.has(cle)) return cacheItineraires.get(cle);
+            const url = `https://router.project-osrm.org/route/v1/driving/${cle}?overview=full&geometries=geojson`;
+            const data = await lireJson(url);
+            if (!data || data.code !== 'Ok' || !data.routes.length) {
+                throw new Error("Impossible de calculer l'itinéraire pour le moment.");
+            }
+            const r = data.routes[0];
+            const route = { km: r.distance / 1000, seconds: r.duration, coords: r.geometry ? r.geometry.coordinates : null };
+            cacheItineraires.set(cle, route);
+            return route;
+        }
+
+        function formatDuration(seconds) {
+            const totalMinutes = Math.round(seconds / 60);
+            const h = Math.floor(totalMinutes / 60);
+            const m = totalMinutes % 60;
+            if (h === 0) return `${m} min`;
+            return `${h} h ${String(m).padStart(2, '0')}`;
+        }
+
+        // Liens pour Steve dans l'email : itinéraire Waze et vérification sur la carte IGN
+        function lienWaze(place) {
+            return `https://waze.com/ul?ll=${place.lat},${place.lon}&navigate=yes`;
+        }
+        function lienCarte(place) {
+            return `https://www.geoportail.gouv.fr/carte?c=${place.lon},${place.lat}&z=18&l0=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2::GEOPORTAIL:OGC:WMTS(1)&permalink=yes`;
+        }
+
+        // ===================== Simulateur de devis =====================
+        let dernierDevis = null;
+
+        async function calculateQuote(event) {
+            event.preventDefault();
+
+            const from = selections.depart;
+            const to = selections.arrivee;
+            if (!from || !to) {
+                showToast("Adresse à confirmer", "Choisissez le départ et l'arrivée dans la liste de suggestions qui apparaît sous le champ.", true);
+                document.getElementById(!from ? 'ville-depart' : 'ville-arrivee').focus();
+                return;
+            }
+
+            const valeurDate = document.getElementById('date-souhaitee').value;
+            const jours = joursAvantPriseEnCharge(valeurDate);
+            if (jours < 0) {
+                showToast("Date invalide", "Choisissez une date de prise en charge à partir d'aujourd'hui.", true);
+                document.getElementById('date-souhaitee').focus();
+                return;
+            }
+            const urgent = jours <= 1;
+
+            const selectVehicule = document.getElementById('type-vehicule');
+            const typeVehicule = selectVehicule.value;
+            const libelleVehicule = selectVehicule.options[selectVehicule.selectedIndex].text.replace(/\s*\(.*\)\s*$/, '');
+
+            const btn = document.getElementById('quote-btn');
+            const btnLabel = document.getElementById('quote-btn-label');
+            const initialLabel = btnLabel.innerText;
+            btn.disabled = true;
+            btnLabel.innerText = 'Calcul de l\'itinéraire...';
+
+            try {
+                const route = await getRoute(from, to);
+                const distanceKm = Math.round(route.km);
+                const minimum = PRIX_MINIMUM[typeVehicule] || PRIX_MINIMUM.standard;
+                const prixTrajet = Math.round(Math.max(minimum, prixVehicule(distanceKm, typeVehicule)));
+                const urgence = urgent ? Math.round(prixTrajet * MAJORATION_URGENCE) : 0;
+                const deplacement = fraisDeplacement(from, to, distanceKm, prixTrajet);
+                const nuitees = nombreNuitees(distanceKm);
+                const prix = prixTrajet + urgence + deplacement + nuitees * PRIX_NUITEE;
+
+                const extras = [];
+                if (urgence > 0) extras.push(`majoration urgence +20 % (${urgence} €)`);
+                if (deplacement > 0) extras.push(`frais de déplacement hors Île-de-France (${deplacement} €)`);
+                if (nuitees > 0) extras.push(`${nuitees > 1 ? nuitees + ' nuitées' : 'nuitée'} d'hôtel (${nuitees * PRIX_NUITEE} €), livraison le lendemain`);
+
+                dernierDevis = {
+                    from, to, distanceKm, prix, prixTrajet, urgence, deplacement, nuitees, minimum,
+                    date: dateEnLettres(valeurDate),
+                    complementDepart: points.depart.complement(),
+                    complementArrivee: points.arrivee.complement(),
+                    modeDepart: points.depart.mode(),
+                    modeArrivee: points.arrivee.mode(),
+                    horsZone: horsZone(from, to),
+                    duree: formatDuration(dureeConvoyage(route.seconds, distanceKm)),
+                    vehicule: libelleVehicule
+                };
+
+                document.getElementById('result-route-desc').innerText = `${from.label} ➔ ${to.label}`;
+                document.getElementById('result-distance').innerText = `${distanceKm.toLocaleString('fr-FR')} km`;
+                document.getElementById('result-duration').innerText = dernierDevis.duree;
+                document.getElementById('result-price').innerText = `${prix.toLocaleString('fr-FR')} €`;
+                const extrasEl = document.getElementById('result-extras');
+                extrasEl.innerText = extras.length ? `Tout compris, dont ${extras.join(', ')}.` : '';
+                extrasEl.classList.toggle('hidden', !extras.length);
+
+                const resultDiv = document.getElementById('quote-result');
+                resultDiv.classList.remove('hidden');
+                resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } catch (err) {
+                showToast("Calcul impossible", `${err.message} Réessayez dans un instant.`, true);
+            } finally {
+                btn.disabled = false;
+                btnLabel.innerText = initialLabel;
+            }
+        }
+
+        // ===================== Envoi des formulaires =====================
+        async function envoyerFormulaire(donnees) {
+            const res = await fetch(FORM_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({ _template: 'table', _captcha: 'false', ...donnees })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || String(data.success) !== 'true') {
+                throw new Error(data.message || "Le message n'a pas pu être envoyé.");
+            }
+        }
+
+        async function confirmBooking() {
+            const form = document.getElementById('quote-form');
+            if (!dernierDevis || !form.reportValidity()) return;
+
+            const nom = document.getElementById('client-nom').value.trim();
+            const email = document.getElementById('client-email').value.trim();
+            const d = dernierDevis;
+
+            const btn = document.getElementById('booking-btn');
+            const btnLabel = document.getElementById('booking-btn-label');
+            const initialLabel = btnLabel.innerText;
+            btn.disabled = true;
+            btnLabel.innerText = 'Envoi en cours...';
+
+            try {
+                await envoyerFormulaire({
+                    _subject: `Demande de convoyage : ${nom} (${d.distanceKm} km, ${d.prix} €)`,
+                    _replyto: email,
+                    _honey: form.elements['_honey'].value,
+                    'Nom': nom,
+                    'Email': email,
+                    'Départ (A)': d.modeDepart === 'ville' ? `${adresseEnClair(d.from, d.complementDepart)} (ville seulement : adresse exacte à préciser avec le client)` : adresseEnClair(d.from, d.complementDepart),
+                    'Départ (Waze)': lienWaze(d.from),
+                    'Départ (carte IGN)': lienCarte(d.from),
+                    'Arrivée (B)': d.modeArrivee === 'ville' ? `${adresseEnClair(d.to, d.complementArrivee)} (ville seulement : adresse exacte à préciser avec le client)` : adresseEnClair(d.to, d.complementArrivee),
+                    'Arrivée (Waze)': lienWaze(d.to),
+                    'Arrivée (carte IGN)': lienCarte(d.to),
+                    'Zone': d.horsZone ? 'HORS ZONE : ni le départ ni l\'arrivée en Île-de-France' : 'Départ ou arrivée en Île-de-France',
+                    'Date souhaitée': d.date + (d.urgence ? ' (URGENT, moins de 48 h)' : ''),
+                    'Véhicule': d.vehicule,
+                    'Distance': `${d.distanceKm} km`,
+                    'Durée estimée': d.duree,
+                    'Tarif appliqué': `Dégressif par tranches (1,30 €/km jusqu'à 200 km, 1,10 de 200 à 500, 0,95 de 500 à 800, 0,90 au-delà) × coefficient véhicule (SUV : 1,25 puis 1,10 après 500 km ; sportive : 1,6 puis 1,15 après 200 km), minimum ${d.minimum} €`,
+                    'Prix du trajet': `${d.prixTrajet} €`,
+                    'Frais de déplacement hors zone': d.deplacement ? `${d.deplacement} €` : 'aucun',
+                    'Majoration urgence': d.urgence ? `+20 % (${d.urgence} €)` : 'aucune',
+                    'Nuitées': d.nuitees ? `${d.nuitees} × ${PRIX_NUITEE} €` : 'aucune',
+                    'Prix estimé total': `${d.prix} € (${MENTION_TVA})`
+                });
+                showToast("Demande de convoyage envoyée", "Je vous recontacte par email au plus vite pour confirmer la mission.");
+                resetForm();
+            } catch (err) {
+                showToast("Envoi impossible", `${err.message} Vous pouvez aussi m'écrire à simorahorizon@gmail.com.`, true);
+            } finally {
+                btn.disabled = false;
+                btnLabel.innerText = initialLabel;
+            }
+        }
+
+        function resetForm() {
+            document.getElementById('quote-form').reset();
+            document.getElementById('quote-result').classList.add('hidden');
+            points.depart.vider();
+            points.arrivee.vider();
+            carte.effacerTrace();
+            dernierDevis = null;
+        }
+
+        // Date : pas de date passée, et tout changement de date ou de véhicule oblige à recalculer
+        (function () {
+            const champDate = document.getElementById('date-souhaitee');
+            const d = new Date();
+            champDate.min = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            champDate.addEventListener('change', masquerResultat);
+            document.getElementById('type-vehicule').addEventListener('change', masquerResultat);
+        })();
+
+        async function submitContact(event) {
+            event.preventDefault();
+            const form = event.target;
+            const btn = document.getElementById('contact-btn');
+            const initialLabel = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = 'Envoi en cours...';
+
+            try {
+                const nom = form.elements['nom'].value.trim();
+                const email = form.elements['email'].value.trim();
+                await envoyerFormulaire({
+                    _subject: `Nouveau message de ${nom} (site Simora Horizon)`,
+                    _replyto: email,
+                    _honey: form.elements['_honey'].value,
+                    'Nom': nom,
+                    'Email': email,
+                    'Message': form.elements['message'].value.trim()
+                });
+                showToast("Message Transmis", "J'ai bien reçu votre message et je vous réponds sous peu.");
+                form.reset();
+            } catch (err) {
+                showToast("Envoi impossible", `${err.message} Vous pouvez aussi m'écrire à simorahorizon@gmail.com.`, true);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = initialLabel;
+            }
+        }
+
+        // ===================== Notification =====================
+        let toastTimer = null;
+        function showToast(title, desc, isError = false) {
+            const toast = document.getElementById('toast-notification');
+            const icon = document.getElementById('toast-icon');
+            const glyph = document.getElementById('toast-icon-glyph');
+            document.getElementById('toast-title').innerText = title;
+            document.getElementById('toast-desc').innerText = desc;
+
+            icon.className = 'w-8 h-8 shrink-0 rounded-full flex items-center justify-center ' +
+                (isError ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400');
+            glyph.className = 'fa-solid text-xs ' + (isError ? 'fa-exclamation' : 'fa-check');
+
+            toast.classList.remove('translate-y-32', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-32', 'opacity-0');
+            }, isError ? 7000 : 4500);
+        }
+    </script>
+</body>
+</html>
